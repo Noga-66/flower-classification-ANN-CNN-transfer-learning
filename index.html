@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Petal — Flower Intelligence</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Syne:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.10.0/tf.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --ink:    #0e0c0a;
+  --paper:  #faf7f2;
+  --cream:  #f2ede4;
+  --warm:   #e8ddd0;
+  --rose:   #c9614a;
+  --rose-l: #e8927e;
+  --rose-d: #8c3a28;
+  --sage:   #6b8f71;
+  --gold:   #c8963e;
+  --muted:  #9b9189;
+  --border: #ddd5c8;
+  --shadow: rgba(14,12,10,.07);
+  --ff-display: 'Cormorant Garamond', Georgia, serif;
+  --ff-ui:      'Syne', sans-serif;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--ff-ui);
+  font-size: 14px;
+  line-height: 1.6;
+  min-height: 100vh;
+  overflow-x: hidden;
+  cursor: none;
+}
+
+/* custom cursor */
+#cur {
+  position: fixed;
+  width: 10px; height: 10px;
+  background: var(--rose);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%,-50%);
+  transition: width .3s cubic-bezier(.34,1.56,.64,1),
+              height .3s cubic-bezier(.34,1.56,.64,1),
+              background .3s;
+  mix-blend-mode: multiply;
+}
+#cur.big { width: 40px; height: 40px; background: rgba(201,97,74,.25); }
+
+/* grain */
+body::after {
+  content:'';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9990;
+}
+
+/* blobs */
+.blobs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  opacity: .15;
+  will-change: transform;
+  animation: blobDrift ease-in-out infinite;
+}
+.b1 { width:520px;height:520px;background:#e8927e;top:-8%;left:58%; animation-duration:28s; }
+.b2 { width:380px;height:380px;background:#6b8f71;top:55%;left:-6%; animation-duration:34s;animation-delay:-11s; }
+.b3 { width:300px;height:300px;background:#c8963e;top:78%;left:72%; animation-duration:22s;animation-delay:-7s; }
+@keyframes blobDrift {
+  0%,100%{ transform:translate(0,0) scale(1); }
+  40%    { transform:translate(30px,-50px) scale(1.07); }
+  70%    { transform:translate(-25px,35px) scale(.95); }
+}
+
+/* petals */
+.petals { position:fixed;inset:0;pointer-events:none;z-index:1;overflow:hidden; }
+.pt { position:absolute;top:-40px;opacity:0;animation:ptFall linear infinite; }
+@keyframes ptFall {
+  0%   { opacity:0;   transform:translateY(0)     rotate(0deg); }
+  6%   { opacity:.5; }
+  94%  { opacity:.35; }
+  100% { opacity:0;   transform:translateY(108vh) rotate(560deg) translateX(50px); }
+}
+
+/* page */
+.page { position:relative;z-index:2;max-width:980px;margin:0 auto;padding:0 28px 100px; }
+
+/* nav */
+nav {
+  display:flex;align-items:center;justify-content:space-between;
+  padding:30px 0 44px;
+  opacity:0;animation:rise .65s .05s ease forwards;
+}
+.brand {
+  font-family:var(--ff-display);font-size:1.55rem;font-weight:600;
+  letter-spacing:-.01em;color:var(--ink);
+  display:flex;align-items:center;gap:10px;
+}
+.brand-dot { width:9px;height:9px;background:var(--rose);border-radius:50%;animation:pulse 2.8s ease-in-out infinite; }
+@keyframes pulse{ 0%,100%{transform:scale(1);opacity:1} 50%{transform:scale(1.6);opacity:.55} }
+.nav-pill {
+  font-size:.67rem;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--muted);border:1px solid var(--border);border-radius:20px;padding:5px 14px;
+}
+
+/* hero */
+.hero {
+  text-align:center;padding:32px 0 60px;
+  opacity:0;animation:rise .75s .15s ease forwards;
+}
+.eyebrow {
+  display:inline-flex;align-items:center;gap:9px;
+  font-size:.7rem;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--rose);
+  margin-bottom:22px;
+}
+.eyebrow::before,.eyebrow::after{ content:'';display:block;width:26px;height:1px;background:var(--rose-l); }
+h1 {
+  font-family:var(--ff-display);font-size:clamp(2.8rem,6.5vw,5.2rem);
+  font-weight:300;line-height:1.0;letter-spacing:-.02em;color:var(--ink);margin-bottom:10px;
+}
+h1 em { font-style:italic;color:var(--rose);display:block; }
+.hero-sub { font-size:.86rem;color:var(--muted);letter-spacing:.03em;max-width:360px;margin:0 auto; }
+
+@keyframes rise{ from{opacity:0;transform:translateY(22px)} to{opacity:1;transform:none} }
+
+/* grid */
+.grid { display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px; }
+@media(max-width:660px){ .grid{grid-template-columns:1fr;} }
+
+/* cards */
+.card {
+  background:#fff;border:1px solid var(--border);border-radius:22px;
+  overflow:hidden;box-shadow:0 2px 18px var(--shadow);
+  opacity:0;animation:rise .6s ease forwards;
+}
+.card:nth-child(1){animation-delay:.28s}
+.card:nth-child(2){animation-delay:.38s}
+.ch {
+  padding:20px 24px 15px;border-bottom:1px solid var(--cream);
+  display:flex;align-items:center;gap:11px;
+}
+.ci {
+  width:34px;height:34px;border-radius:9px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:.95rem;background:var(--cream);flex-shrink:0;
+}
+.ct { font-size:.75rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink); }
+.cs { font-size:.68rem;color:var(--muted);margin-top:1px; }
+.cb { padding:18px 24px 22px; }
+
+/* model buttons */
+.mgrid { display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:18px; }
+.mbtn {
+  background:var(--paper);border:1.5px solid var(--border);border-radius:13px;
+  padding:13px 8px;cursor:pointer;text-align:center;
+  transition:border-color .2s,background .2s,transform .15s,box-shadow .2s;
+  position:relative;overflow:hidden;
+}
+.mbtn::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(135deg,rgba(201,97,74,.07),transparent);
+  opacity:0;transition:opacity .25s;
+}
+.mbtn:hover{ border-color:var(--rose-l);transform:translateY(-2px);box-shadow:0 6px 18px rgba(201,97,74,.11); }
+.mbtn:hover::before{ opacity:1; }
+.mbtn.on {
+  border-color:var(--rose);background:#fff;
+  box-shadow:0 0 0 3px rgba(201,97,74,.11),0 6px 18px rgba(201,97,74,.09);
+}
+.mbtn.on::before{ opacity:1; }
+.mi { font-size:1.35rem;margin-bottom:5px;display:block; }
+.mn { font-size:.73rem;font-weight:600;color:var(--ink);display:block; }
+.ma { font-size:.67rem;color:var(--muted);display:block;margin-top:2px; }
+.mbtn.on .ma { color:var(--rose); }
+
+/* file inputs */
+.frow { display:flex;gap:9px;align-items:stretch; }
+.flbl {
+  flex:1;display:flex;align-items:center;gap:9px;
+  background:var(--paper);border:1.5px dashed var(--border);border-radius:11px;
+  padding:10px 14px;cursor:pointer;
+  transition:border-color .2s,background .2s;font-size:.76rem;
+}
+.flbl:hover{ border-color:var(--rose-l);background:#fdf9f6; }
+.flbl input{ display:none; }
+.fi { font-size:.88rem;opacity:.55;flex-shrink:0; }
+.ft { color:var(--muted); }
+.fn { color:var(--rose);font-weight:500; }
+
+/* primary btn */
+.btn {
+  background:var(--rose);color:#fff;border:none;border-radius:11px;
+  padding:10px 20px;font-family:var(--ff-ui);font-size:.76rem;font-weight:600;
+  letter-spacing:.04em;cursor:pointer;
+  transition:background .2s,transform .15s,box-shadow .2s;
+  white-space:nowrap;flex-shrink:0;
+}
+.btn:hover:not(:disabled){ background:var(--rose-d);transform:translateY(-1px);box-shadow:0 6px 16px rgba(201,97,74,.3); }
+.btn:active{ transform:none; }
+.btn:disabled{ background:var(--warm);color:var(--muted);cursor:not-allowed;box-shadow:none; }
+
+/* secondary btn */
+.btn2 {
+  display:inline-flex;align-items:center;gap:8px;
+  background:transparent;border:1.5px solid var(--border);border-radius:10px;
+  padding:9px 16px;font-family:var(--ff-ui);font-size:.73rem;font-weight:600;
+  color:var(--ink);cursor:pointer;transition:all .2s;align-self:flex-start;
+}
+.btn2:hover{ border-color:var(--rose-l);color:var(--rose);background:#fdf9f8; }
+
+/* status */
+.status {
+  display:flex;align-items:center;gap:8px;margin-top:12px;
+  padding:8px 13px;border-radius:9px;font-size:.73rem;
+  background:var(--cream);color:var(--muted);border:1px solid var(--border);
+  transition:all .3s;min-height:36px;
+}
+.status.ok    { background:#f0f8f1;border-color:#b5dabb;color:#3a7042; }
+.status.err   { background:#fdf2f1;border-color:#f0b9b3;color:#8c3a28; }
+.status.spin  { background:#fdf7f3;border-color:#f0d0c0;color:var(--rose-d); }
+.sd { width:7px;height:7px;border-radius:50%;background:currentColor;flex-shrink:0; }
+.sd.blink{ animation:blink 1s ease-in-out infinite; }
+@keyframes blink{ 0%,100%{opacity:1} 50%{opacity:.2} }
+
+/* drop zone */
+.dz {
+  border:2px dashed var(--border);border-radius:18px;padding:48px 20px;
+  text-align:center;cursor:pointer;transition:all .3s;background:#fff;
+  position:relative;overflow:hidden;
+}
+.dz::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(ellipse at center,rgba(201,97,74,.04),transparent 70%);
+  opacity:0;transition:opacity .3s;
+}
+.dz:hover,.dz.ov{ border-color:var(--rose-l); }
+.dz:hover::before,.dz.ov::before{ opacity:1; }
+.dz.ov{ border-color:var(--rose);background:#fdf9f8;transform:scale(1.006); }
+.dz input{ display:none; }
+.dz-ico{ font-size:2.6rem;margin-bottom:12px;display:block;animation:bob 4s ease-in-out infinite; }
+@keyframes bob{ 0%,100%{transform:translateY(0)} 50%{transform:translateY(-9px)} }
+.dz-t{ font-family:var(--ff-display);font-size:1.55rem;font-weight:400;color:var(--ink);margin-bottom:5px; }
+.dz-s{ font-size:.76rem;color:var(--muted); }
+.dz-f{ margin-top:10px;font-size:.66rem;color:var(--warm);letter-spacing:.06em;text-transform:uppercase; }
+
+/* result */
+.rp{ display:none;opacity:0;animation:rise .4s ease forwards;grid-column:1/-1; }
+.rp.show{ display:block; }
+.rc{ background:#fff;border:1px solid var(--border);border-radius:22px;overflow:hidden;box-shadow:0 4px 30px var(--shadow); }
+.rh{ display:grid;grid-template-columns:300px 1fr;min-height:290px; }
+@media(max-width:680px){ .rh{grid-template-columns:1fr;} }
+.rim{ position:relative;overflow:hidden;background:var(--cream); }
+.rim img{ width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s ease; }
+.rim:hover img{ transform:scale(1.05); }
+.rtag{
+  position:absolute;bottom:13px;left:13px;
+  background:rgba(250,247,242,.88);backdrop-filter:blur(10px);
+  border:1px solid var(--border);border-radius:7px;
+  padding:3px 11px;font-size:.67rem;font-weight:600;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--rose);
+}
+.ri{ padding:30px 34px;display:flex;flex-direction:column;justify-content:center; }
+.rl{ font-size:.67rem;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:9px; }
+.rf{ font-family:var(--ff-display);font-size:clamp(2.2rem,4.5vw,3.4rem);font-weight:300;color:var(--ink);line-height:1.05;margin-bottom:3px;text-transform:capitalize; }
+.rf em{ font-style:italic;color:var(--rose); }
+.rdesc{ font-size:.8rem;color:var(--muted);margin-bottom:26px;font-style:italic; }
+.cblock{ margin-bottom:24px; }
+.chdr{ display:flex;justify-content:space-between;align-items:center;margin-bottom:7px; }
+.clt{ font-size:.7rem;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--muted); }
+.cpct{ font-family:var(--ff-display);font-size:1.45rem;font-weight:600;color:var(--rose); }
+.ctrk{ height:5px;background:var(--cream);border-radius:3px;overflow:hidden; }
+.cfil{ height:100%;border-radius:3px;background:linear-gradient(90deg,var(--rose-l),var(--rose));width:0;transition:width 1.2s cubic-bezier(.23,1,.32,1); }
+
+/* breakdown */
+.bk{ padding:22px 34px 28px;border-top:1px solid var(--cream); }
+.bk h4{ font-size:.67rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:16px; }
+.bkrows{ display:flex;flex-direction:column;gap:11px; }
+.br{ display:grid;grid-template-columns:112px 1fr 52px;align-items:center;gap:13px; }
+.bn{ font-size:.77rem;color:var(--ink);display:flex;align-items:center;gap:6px;text-transform:capitalize; }
+.bt{ background:var(--cream);border-radius:3px;height:5px;overflow:hidden; }
+.bf{ height:100%;border-radius:3px;background:var(--warm);transition:width 1s cubic-bezier(.23,1,.32,1);width:0; }
+.br.win .bf{ background:linear-gradient(90deg,var(--rose-l),var(--rose)); }
+.bp{ font-size:.7rem;color:var(--muted); }
+.br.win .bp{ color:var(--rose);font-weight:600; }
+
+/* history */
+.hw{ opacity:0;animation:rise .6s .5s ease forwards;margin-top:4px; }
+.slbl{
+  font-size:.67rem;font-weight:600;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:13px;display:flex;align-items:center;gap:10px;
+}
+.slbl::after{ content:'';flex:1;height:1px;background:var(--border); }
+.hgrid{ display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:11px; }
+.hi{
+  background:#fff;border:1px solid var(--border);border-radius:14px;
+  overflow:hidden;cursor:pointer;transition:all .2s;
+  box-shadow:0 2px 7px var(--shadow);
+}
+.hi:hover{ border-color:var(--rose-l);transform:translateY(-3px);box-shadow:0 8px 22px rgba(201,97,74,.11); }
+.hi img{ width:100%;aspect-ratio:1;object-fit:cover;display:block; }
+.hii{ padding:7px 9px; }
+.hin{ font-size:.71rem;font-weight:600;color:var(--ink);text-transform:capitalize;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.hic{ font-size:.65rem;color:var(--muted); }
+
+/* guide */
+.guide{
+  background:var(--ink);border-radius:18px;overflow:hidden;
+  margin-top:20px;opacity:0;animation:rise .6s .6s ease forwards;
+}
+.gh{
+  padding:18px 26px 13px;border-bottom:1px solid rgba(255,255,255,.05);
+  display:flex;align-items:center;gap:11px;
+}
+.gb{ padding:18px 26px 22px; }
+pre{
+  font-family:'SFMono-Regular',Consolas,monospace;font-size:.74rem;
+  line-height:1.8;color:#a8d8a8;overflow-x:auto;
+}
+.cm{ color:rgba(255,255,255,.28); }
+.kw{ color:#e8927e; }
+.st{ color:#f9e4b3; }
+.gtip{
+  margin-top:14px;padding:11px 15px;
+  background:rgba(107,143,113,.1);border:1px solid rgba(107,143,113,.22);
+  border-radius:9px;font-size:.73rem;color:#9bc4a0;line-height:1.65;
+}
+
+/* loader */
+.ldr{
+  display:none;position:fixed;inset:0;
+  background:rgba(250,247,242,.88);backdrop-filter:blur(12px);
+  z-index:1000;align-items:center;justify-content:center;
+  flex-direction:column;gap:18px;
+}
+.ldr.show{ display:flex; }
+.lring{
+  width:46px;height:46px;border:2.5px solid var(--warm);
+  border-top-color:var(--rose);border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{ to{transform:rotate(360deg);} }
+.ltxt{ font-size:.76rem;color:var(--muted);letter-spacing:.04em; }
+
+#wrow{ display:none;margin-top:9px; }
+</style>
+</head>
+<body>
+
+<div id="cur"></div>
+
+<div class="blobs">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+</div>
+<div class="petals" id="petals"></div>
+
+<div class="ldr" id="ldr">
+  <div class="lring"></div>
+  <p class="ltxt" id="ltxt">Loading model…</p>
+</div>
+
+<div class="page">
+
+  <nav>
+    <div class="brand"><span class="brand-dot"></span>Petal</div>
+    <span class="nav-pill">Flower Intelligence</span>
+  </nav>
+
+  <div class="hero">
+    <div class="eyebrow">Neural Vision</div>
+    <h1>Identify any<em>flower.</em></h1>
+    <p class="hero-sub">Upload an image — three AI architectures compete to name it.</p>
+  </div>
+
+  <div class="grid">
+
+    <!-- Model card -->
+    <div class="card">
+      <div class="ch">
+        <div class="ci">🤖</div>
+        <div>
+          <div class="ct">Select Model</div>
+          <div class="cs">Choose your architecture</div>
+        </div>
+      </div>
+      <div class="cb">
+        <div class="mgrid">
+          <button class="mbtn on" data-t="transfer" onclick="selModel(this)">
+            <span class="mi">⚡</span>
+            <span class="mn">Transfer</span>
+            <span class="ma">~93% acc.</span>
+          </button>
+          <button class="mbtn" data-t="cnn" onclick="selModel(this)">
+            <span class="mi">🧠</span>
+            <span class="mn">CNN</span>
+            <span class="ma">~82% acc.</span>
+          </button>
+          <button class="mbtn" data-t="ann" onclick="selModel(this)">
+            <span class="mi">🔗</span>
+            <span class="mn">ANN</span>
+            <span class="ma">~63% acc.</span>
+          </button>
+        </div>
+
+        <div class="frow">
+          <label class="flbl" for="jIn">
+            <span class="fi">📄</span>
+            <span id="jName" class="ft">Select model.json</span>
+            <input type="file" id="jIn" accept=".json" onchange="onJson(this)"/>
+          </label>
+          <button class="btn" id="ldBtn" disabled onclick="doLoad()">Load</button>
+        </div>
+
+        <div id="wrow">
+          <label class="flbl" for="bIn">
+            <span class="fi">📦</span>
+            <span id="bName" class="ft">Select .bin weight files</span>
+            <input type="file" id="bIn" accept=".bin" multiple onchange="onBin(this)"/>
+          </label>
+        </div>
+
+        <div class="status" id="st">
+          <div class="sd"></div>
+          <span id="stxt">Awaiting model file…</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload card -->
+    <div class="card">
+      <div class="ch">
+        <div class="ci">🌸</div>
+        <div>
+          <div class="ct">Upload Image</div>
+          <div class="cs">Drag, drop, or click</div>
+        </div>
+      </div>
+      <div class="cb" style="padding-top:12px">
+        <div class="dz" id="dz"
+             onclick="document.getElementById('iIn').click()"
+             ondragover="onDO(event)" ondragleave="onDL()" ondrop="onDD(event)">
+          <input type="file" id="iIn" accept="image/*" onchange="onImg(this)"/>
+          <span class="dz-ico">🌷</span>
+          <div class="dz-t">Drop your flower here</div>
+          <div class="dz-s">or click to browse</div>
+          <div class="dz-f">JPG · PNG · WEBP · up to 10 MB</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Result -->
+    <div class="rp grid" id="rp" style="grid-column:1/-1">
+      <div class="rc" style="grid-column:1/-1">
+        <div class="rh">
+          <div class="rim">
+            <img id="rImg" src="" alt="flower"/>
+            <div class="rtag" id="rTag">Transfer Learning</div>
+          </div>
+          <div class="ri">
+            <div class="rl">Identified as</div>
+            <div class="rf"><em id="rName">—</em></div>
+            <div class="rdesc" id="rDesc">—</div>
+            <div class="cblock">
+              <div class="chdr">
+                <span class="clt">Confidence</span>
+                <span class="cpct" id="rPct">—</span>
+              </div>
+              <div class="ctrk"><div class="cfil" id="rFil"></div></div>
+            </div>
+            <button class="btn2" onclick="document.getElementById('iIn').click()">↺ Try another image</button>
+          </div>
+        </div>
+        <div class="bk">
+          <h4>All Classes — Probability Breakdown</h4>
+          <div class="bkrows" id="bkR"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- History -->
+  <div class="hw" id="hw" style="display:none">
+    <div class="slbl">Recent predictions</div>
+    <div class="hgrid" id="hg"></div>
+  </div>
+
+  <!-- Guide -->
+  <div class="guide">
+    <div class="gh">
+      <div class="ci" style="background:rgba(255,255,255,.07);color:#fff">🔧</div>
+      <div>
+        <div style="font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.32);margin-bottom:2px">Setup</div>
+        <strong style="font-size:.8rem;color:#fff;font-weight:600">Convert Keras → TensorFlow.js</strong>
+      </div>
+    </div>
+    <div class="gb">
+<pre><span class="cm"># Install the converter</span>
+<span class="kw">pip install</span> tensorflowjs
+
+<span class="cm"># Convert your trained model</span>
+tensorflowjs_converter \
+    --input_format=keras \
+    <span class="st">saved_models/transfer_learning_flowers.h5</span> \
+    <span class="st">tfjs_model/</span>
+
+<span class="cm"># Output → tfjs_model/model.json</span>
+<span class="cm">#           tfjs_model/group1-shard1of1.bin</span></pre>
+      <div class="gtip">
+        💡 <strong style="color:#c4e8c8">Tip:</strong> Run this in Google Colab right after training, then download the full <code style="color:#f9e4b3">tfjs_model/</code> folder. Upload <code style="color:#f9e4b3">model.json</code> here — the page will prompt for <code style="color:#f9e4b3">.bin</code> weights if needed.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── constants ──────────────────────────────────────────────
+const CLS   = ['daisy','dandelion','rose','sunflower','tulip'];
+const EMO   = {daisy:'🌼',dandelion:'🌿',rose:'🌹',sunflower:'🌻',tulip:'🌷'};
+const DESC  = {
+  daisy:    'A cheerful white-rayed wildflower of open meadows.',
+  dandelion:'A golden composite flower with feathery seed heads.',
+  rose:     'The timeless symbol of love, beauty and elegance.',
+  sunflower:'A tall heliotropic bloom that follows the sun.',
+  tulip:    'A graceful cup-shaped spring flower of Central Asia.'
+};
+const MLBL  = {transfer:'Transfer Learning (VGG16)',cnn:'CNN',ann:'ANN'};
+
+// ── state ──────────────────────────────────────────────────
+let model=null, selType='transfer', jFile=null, bFiles=[], hist=[];
+
+// ── cursor ─────────────────────────────────────────────────
+const cur=document.getElementById('cur');
+document.addEventListener('mousemove',e=>{
+  cur.style.left=e.clientX+'px';
+  cur.style.top=e.clientY+'px';
+});
+document.addEventListener('mouseover',e=>{
+  if(e.target.closest('button,label,.mbtn,.hi,.dz')) cur.classList.add('big');
+  else cur.classList.remove('big');
+});
+
+// ── petals ─────────────────────────────────────────────────
+(()=>{
+  const layer=document.getElementById('petals');
+  const cols=['#e8927e','#c9614a','#ddb89a','#c8963e','#6b8f71','#f5d0c0'];
+  for(let i=0;i<24;i++){
+    const d=document.createElement('div');
+    d.className='pt';
+    const sz=7+Math.random()*11;
+    const col=cols[i%cols.length];
+    d.style.cssText=`left:${Math.random()*100}%;animation-duration:${9+Math.random()*18}s;animation-delay:${-Math.random()*22}s`;
+    d.innerHTML=`<svg width="${sz}" height="${sz*1.5}" viewBox="0 0 10 15">
+      <ellipse cx="5" cy="7.5" rx="4.2" ry="6.8" fill="${col}" opacity="0.52"
+        transform="rotate(${Math.random()*360} 5 7.5)"/></svg>`;
+    layer.appendChild(d);
+  }
+})();
+
+// ── model select ───────────────────────────────────────────
+function selModel(el){
+  document.querySelectorAll('.mbtn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  selType=el.dataset.t;
+  document.getElementById('rTag').textContent=MLBL[selType];
+  model=null;
+  document.getElementById('ldBtn').textContent='Load';
+  setSt('','Model changed — please reload a model file.');
+}
+
+// ── json file ──────────────────────────────────────────────
+function onJson(inp){
+  jFile=inp.files[0];
+  if(!jFile)return;
+  const n=document.getElementById('jName');
+  n.textContent=jFile.name; n.className='fn';
+  document.getElementById('ldBtn').disabled=false;
+  setSt('','Ready — click Load');
+}
+
+// ── bin files ──────────────────────────────────────────────
+function onBin(inp){
+  bFiles=Array.from(inp.files);
+  if(!bFiles.length)return;
+  const n=document.getElementById('bName');
+  n.textContent=`${bFiles.length} file(s) selected`; n.className='fn';
+  tryLoad([jFile,...bFiles]);
+}
+
+// ── load model ─────────────────────────────────────────────
+async function doLoad(){
+  if(!jFile)return;
+  document.getElementById('ldBtn').disabled=true;
+  showLdr('Loading model…');
+  const url=URL.createObjectURL(jFile);
+  try{
+    model=await tf.loadLayersModel(url);
+    URL.revokeObjectURL(url);
+    onLoaded();
+  }catch{
+    URL.revokeObjectURL(url);
+    document.getElementById('wrow').style.display='block';
+    setSt('err','Weights (.bin) required — select them below.');
+    document.getElementById('ldBtn').disabled=false;
+    hideLdr();
+  }
+}
+
+async function tryLoad(files){
+  showLdr('Loading model with weights…');
+  try{
+    model=await tf.loadLayersModel(tf.io.browserFiles(files));
+    onLoaded();
+  }catch(e){
+    setSt('err','Load failed: '+e.message);
+    hideLdr();
+  }
+}
+
+function onLoaded(){
+  const p=(model.countParams()/1e6).toFixed(2);
+  setSt('ok',`Ready — ${p}M params · ${MLBL[selType]}`);
+  document.getElementById('ldBtn').textContent='Loaded ✓';
+  hideLdr();
+}
+
+// ── drag & drop ────────────────────────────────────────────
+function onDO(e){e.preventDefault();document.getElementById('dz').classList.add('ov');}
+function onDL(){document.getElementById('dz').classList.remove('ov');}
+function onDD(e){
+  e.preventDefault();
+  document.getElementById('dz').classList.remove('ov');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type.startsWith('image/'))procFile(f);
+}
+function onImg(inp){ const f=inp.files[0]; if(f)procFile(f); }
+
+function procFile(file){
+  if(!model){demo();return;}
+  const r=new FileReader();
+  r.onload=ev=>{ document.getElementById('rImg').src=ev.target.result; predict(ev.target.result); };
+  r.readAsDataURL(file);
+}
+
+// ── predict ────────────────────────────────────────────────
+async function predict(url){
+  showLdr('Analysing with AI…');
+  try{
+    const img=new Image(); img.src=url;
+    await new Promise(r=>img.onload=r);
+    const t=tf.tidy(()=>tf.browser.fromPixels(img)
+      .resizeBilinear([128,128]).toFloat().div(255).expandDims(0));
+    const raw=await model.predict(t).data();
+    t.dispose();
+    showResult(Array.from(raw),url);
+  }catch(e){ setSt('err','Prediction error: '+e.message); }
+  finally{ hideLdr(); }
+}
+
+// ── demo ───────────────────────────────────────────────────
+function demo(){
+  const svg=`data:image/svg+xml,${encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400">
+      <rect fill="#f2ede4" width="400" height="400"/>
+      <text x="200" y="175" text-anchor="middle" font-size="110">🌹</text>
+      <text x="200" y="245" text-anchor="middle" fill="#c9614a" font-size="21" font-family="Georgia" font-style="italic">Demo Mode</text>
+      <text x="200" y="272" text-anchor="middle" fill="#9b9189" font-size="12" font-family="sans-serif">Load your model for real predictions</text>
+    </svg>`)}`;
+  document.getElementById('rImg').src=svg;
+  showResult([0.04,0.02,0.88,0.04,0.02],svg,true);
+}
+
+// ── show result ────────────────────────────────────────────
+function showResult(preds,url,isDemo=false){
+  const ti=preds.indexOf(Math.max(...preds));
+  const tc=CLS[ti], conf=preds[ti];
+
+  document.getElementById('rName').textContent=tc;
+  document.getElementById('rDesc').textContent=DESC[tc];
+  document.getElementById('rPct').textContent=(conf*100).toFixed(1)+'%';
+  document.getElementById('rTag').textContent=MLBL[selType]+(isDemo?' · Demo':'');
+
+  const rp=document.getElementById('rp');
+  rp.classList.add('show');
+
+  setTimeout(()=>{ document.getElementById('rFil').style.width=(conf*100)+'%'; },80);
+
+  // breakdown
+  const sorted=[...CLS.map((c,i)=>({c,p:preds[i]}))].sort((a,b)=>b.p-a.p);
+  const rows=document.getElementById('bkR');
+  rows.innerHTML='';
+  sorted.forEach(({c,p},i)=>{
+    const win=c===tc;
+    const div=document.createElement('div');
+    div.className='br'+(win?' win':'');
+    div.innerHTML=`<div class="bn">${EMO[c]} ${c}</div>
+      <div class="bt"><div class="bf" id="bf_${c}"></div></div>
+      <div class="bp">${(p*100).toFixed(1)}%</div>`;
+    rows.appendChild(div);
+    setTimeout(()=>{ document.getElementById('bf_'+c).style.width=(p*100)+'%'; },120+i*65);
+  });
+
+  addHist(tc,conf,url);
+  rp.scrollIntoView({behavior:'smooth',block:'start'});
+  if(isDemo) setSt('spin','⚠ Demo — load your trained model for actual results.');
+}
+
+// ── history ────────────────────────────────────────────────
+function addHist(cls,conf,url){
+  hist.unshift({cls,conf,url});
+  if(hist.length>10)hist.pop();
+  const hw=document.getElementById('hw');
+  const hg=document.getElementById('hg');
+  hw.style.display='block';
+  hg.innerHTML='';
+  hist.forEach(({cls,conf,url})=>{
+    const el=document.createElement('div');
+    el.className='hi';
+    el.innerHTML=`<img src="${url}" alt="${cls}"/>
+      <div class="hii">
+        <div class="hin">${EMO[cls]} ${cls}</div>
+        <div class="hic">${(conf*100).toFixed(0)}% confidence</div>
+      </div>`;
+    el.onclick=()=>{ document.getElementById('rImg').src=url; document.getElementById('rp').scrollIntoView({behavior:'smooth'}); };
+    hg.appendChild(el);
+  });
+}
+
+// ── status ─────────────────────────────────────────────────
+function setSt(type,msg){
+  const el=document.getElementById('st');
+  const dot=el.querySelector('.sd');
+  el.className='status'+( type?' '+type:'' );
+  dot.className='sd'+(type==='spin'?' blink':'');
+  document.getElementById('stxt').textContent=msg;
+}
+function showLdr(msg){ document.getElementById('ltxt').textContent=msg; document.getElementById('ldr').classList.add('show'); }
+function hideLdr(){ document.getElementById('ldr').classList.remove('show'); }
+
+// demo trigger when no model
+document.getElementById('dz').addEventListener('click',e=>{
+  if(!model){ e.stopPropagation(); demo(); }
+},true);
+
+console.log('%c🌸 Petal','color:#c9614a;font-size:18px;font-style:italic;font-weight:600');
+console.log('%cTF.js '+tf.version.tfjs,'color:#9b9189;font-size:11px');
+</script>
+</body>
+</html>
